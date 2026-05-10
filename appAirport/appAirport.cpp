@@ -146,8 +146,18 @@ ATOM MyRegisterClass(HINSTANCE hInstance) {
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
     hInst = hInstance;
     g_hWnd = CreateWindowW(szWindowClass, L"Аэропорт - Система управления рейсами",
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, 1500, 950, nullptr, nullptr, hInstance, nullptr);
+        WS_OVERLAPPEDWINDOW | WS_VSCROLL,  // Добавлена вертикальная прокрутка
+        CW_USEDEFAULT, 0, 1500, 950, nullptr, nullptr, hInstance, nullptr);
     if (!g_hWnd) return FALSE;
+
+    // Устанавливаем диапазон прокрутки
+    SCROLLINFO si = { sizeof(SCROLLINFO) };
+    si.fMask = SIF_RANGE | SIF_PAGE;
+    si.nMin = 0;
+    si.nMax = 400;  // Высота содержимого
+    si.nPage = 900; // Высота окна
+    SetScrollInfo(g_hWnd, SB_VERT, &si, TRUE);
+
     ShowWindow(g_hWnd, nCmdShow);
     UpdateWindow(g_hWnd);
     return TRUE;
@@ -832,6 +842,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         SaveTickets();
         PostQuitMessage(0);
         break;
+    case WM_VSCROLL: {
+        SCROLLINFO si = { sizeof(SCROLLINFO) };
+        si.fMask = SIF_ALL;
+        GetScrollInfo(hWnd, SB_VERT, &si);
+        int yPos = si.nPos;
+
+        switch (LOWORD(wParam)) {
+        case SB_LINEUP:      yPos -= 10; break;
+        case SB_LINEDOWN:    yPos += 10; break;
+        case SB_PAGEUP:      yPos -= 100; break;
+        case SB_PAGEDOWN:    yPos += 100; break;
+        case SB_THUMBTRACK:  yPos = si.nTrackPos; break;
+        default: break;
+        }
+
+        yPos = max(0, min(yPos, si.nMax - (int)si.nPage + 10));
+        if (yPos != si.nPos) {
+            SetScrollPos(hWnd, SB_VERT, yPos, TRUE);
+            ScrollWindow(hWnd, 0, si.nPos - yPos, NULL, NULL);
+            UpdateWindow(hWnd);
+        }
+        break;
+    }
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
