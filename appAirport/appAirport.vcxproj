@@ -139,13 +139,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Aircraft.h" />
     <ClInclude Include="appAirport.h" />
+    <ClInclude Include="Flight.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="Ticket.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Aircraft.cpp" />
     <ClCompile Include="appAirport.cpp" />
+    <ClCompile Include="Flight.cpp" />
+    <ClCompile Include="Ticket.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="appAirport.rc" />
