@@ -24,13 +24,15 @@ public:
     std::time_t getDepartureTime() const;
     int getDurationMinutes() const;
     int getFreeSeats() const;
+
     void setFreeSeats(int seats);
     void setNumber(const std::string& num);
     void setDestination(const std::string& dest);
     void setDeparturePoint(const std::string& dep);
     void setDepartureTime(std::time_t time);
     void setDurationMinutes(int dur);
-    void setAircraft(Aircraft* ac) { aircraft = ac; }  // днаюбхрэ щрнр лернд
+    void setAircraft(Aircraft* ac);  // рнкэйн назъбкемхе!
+
     std::string getDepartureTimeStr() const;
 
     std::string toFileString() const;

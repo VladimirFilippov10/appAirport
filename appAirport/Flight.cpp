@@ -18,12 +18,16 @@ std::string Flight::getDeparturePoint() const { return departurePoint; }
 std::time_t Flight::getDepartureTime() const { return departureTime; }
 int Flight::getDurationMinutes() const { return durationMinutes; }
 int Flight::getFreeSeats() const { return freeSeats; }
+
 void Flight::setFreeSeats(int seats) { freeSeats = seats; }
 void Flight::setNumber(const std::string& num) { number = num; }
 void Flight::setDestination(const std::string& dest) { destination = dest; }
 void Flight::setDeparturePoint(const std::string& dep) { departurePoint = dep; }
 void Flight::setDepartureTime(std::time_t time) { departureTime = time; }
 void Flight::setDurationMinutes(int dur) { durationMinutes = dur; }
+
+// ========== ĞÅÀËÈÇÀÖÈß setAircraft (òîëüêî çäåñü) ==========
+void Flight::setAircraft(Aircraft* ac) { aircraft = ac; }
 
 std::string Flight::getDepartureTimeStr() const {
     std::tm tmBuf = {};

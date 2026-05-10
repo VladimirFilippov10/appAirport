@@ -20,6 +20,7 @@ std::string Ticket::getPassportSeries() const { return passportSeries; }
 std::string Ticket::getPassportNumber() const { return passportNumber; }
 double Ticket::getPrice() const { return price; }
 
+// ========== ĞÅÀËÈÇÀÖÈÈ SETTER'ÎÂ (òîëüêî çäåñü, â .cpp) ==========
 void Ticket::setCashierNumber(const std::string& num) { cashierNumber = num; }
 void Ticket::setFlightNumber(const std::string& num) { flightNumber = num; }
 void Ticket::setSaleDate(std::time_t dt) { saleDate = dt; }
