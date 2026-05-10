@@ -44,6 +44,7 @@
 #define IDC_EDIT_PASSENGER     1023
 #define IDC_EDIT_PRICE         1024
 #define IDC_EDIT_TICKET_CASHIER 1025
+#define IDC_COMBO_AIRCRAFT     1026
 
 // Глобальные переменные
 HINSTANCE hInst;
@@ -58,6 +59,7 @@ std::vector<Ticket> tickets;
 std::vector<std::string> lastQueryResults;
 
 // Файлы для хранения данных
+const std::string AIRCRAFTS_FILE = "aircrafts.txt";
 const std::string FLIGHTS_FILE = "flights.txt";
 const std::string TICKETS_FILE = "tickets.txt";
 
@@ -66,6 +68,7 @@ HWND hListFlights, hListResults;
 HWND hEditFlightNum, hEditDest, hEditDepart, hEditTime, hEditDuration, hEditSeats;
 HWND hEditQueryFlight, hEditQueryDest;
 HWND hEditTicketFlight, hEditPassenger, hEditPrice, hEditTicketCashier;
+HWND hComboAircraft;
 
 // ========== ОБЪЯВЛЕНИЯ ФУНКЦИЙ ==========
 ATOM MyRegisterClass(HINSTANCE hInstance);
@@ -77,8 +80,10 @@ void CreateControls(HWND hWnd);
 // Функции интерфейса
 void RefreshFlightsList();
 void RefreshResultsList(const std::vector<std::string>& results);
+void UpdateAircraftCombo();
 
 // Функции БД
+void LoadAircrafts();
 void LoadData();
 void SaveData();
 void LoadTickets();
@@ -152,6 +157,50 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
     return TRUE;
 }
 
+// ========== ЗАГРУЗКА САМОЛЁТОВ ИЗ ФАЙЛА ==========
+void LoadAircrafts() {
+    aircrafts.clear();
+    std::ifstream file(AIRCRAFTS_FILE);
+    if (file.is_open()) {
+        std::string line;
+        while (std::getline(file, line)) {
+            if (line.empty()) continue;
+
+            std::vector<std::string> parts;
+            std::stringstream ss(line);
+            std::string part;
+            while (std::getline(ss, part, ';')) {
+                parts.push_back(part);
+            }
+
+            if (parts.size() >= 3) {
+                std::string name = parts[0];
+                std::string category = parts[1];
+                int seats = SafeStoi(parts[2], 150);
+                aircrafts.push_back(Aircraft(name, category, seats));
+            }
+        }
+        file.close();
+    }
+
+    // Если файл пустой или не загрузился, добавим самолёты по умолчанию
+    if (aircrafts.empty()) {
+        aircrafts.push_back(Aircraft("Boeing 737-800", "Среднемагистральный", 180));
+        aircrafts.push_back(Aircraft("Airbus A320", "Среднемагистральный", 160));
+        aircrafts.push_back(Aircraft("Sukhoi Superjet 100", "Ближнемагистральный", 100));
+    }
+}
+
+// ========== ОБНОВЛЕНИЕ КОМБОБОКСА С САМОЛЁТАМИ ==========
+void UpdateAircraftCombo() {
+    SendMessage(hComboAircraft, CB_RESETCONTENT, 0, 0);
+    for (size_t i = 0; i < aircrafts.size(); i++) {
+        std::wstring item = StringToWString(aircrafts[i].getName() + " (" + aircrafts[i].getCategory() + ", " + std::to_string(aircrafts[i].getSeats()) + " мест)");
+        SendMessage(hComboAircraft, CB_ADDSTRING, 0, (LPARAM)item.c_str());
+    }
+    SendMessage(hComboAircraft, CB_SETCURSEL, 0, 0);
+}
+
 // ========== СОЗДАНИЕ ИНТЕРФЕЙСА ==========
 void CreateControls(HWND hWnd) {
     INITCOMMONCONTROLSEX icex = { sizeof(INITCOMMONCONTROLSEX), ICC_LISTVIEW_CLASSES };
@@ -163,9 +212,9 @@ void CreateControls(HWND hWnd) {
         10, 10, 980, 320, hWnd, (HMENU)IDC_LIST_FLIGHTS, hInst, NULL);
 
     LVCOLUMNW lvc = { LVCF_TEXT | LVCF_WIDTH };
-    const wchar_t* cols[] = { L"Номер рейса", L"Назначение", L"Отправление", L"Время вылета", L"Длит.(мин)", L"Мест" };
-    int widths[] = { 140, 180, 180, 220, 100, 90 };
-    for (int i = 0; i < 6; i++) {
+    const wchar_t* cols[] = { L"Номер рейса", L"Самолёт", L"Назначение", L"Отправление", L"Время вылета", L"Длит.(мин)", L"Мест" };
+    int widths[] = { 120, 200, 150, 150, 180, 90, 80 };
+    for (int i = 0; i < 7; i++) {
         lvc.cx = widths[i];
         lvc.pszText = const_cast<wchar_t*>(cols[i]);
         ListView_InsertColumn(hListFlights, i, &lvc);
@@ -193,10 +242,16 @@ void CreateControls(HWND hWnd) {
     CreateWindowW(L"STATIC", L"Кол-во мест:", WS_CHILD | WS_VISIBLE, 1010, 250, 100, 30, hWnd, NULL, hInst, NULL);
     hEditSeats = CreateWindowW(L"EDIT", L"50", WS_CHILD | WS_VISIBLE | WS_BORDER, 1120, 250, 130, 30, hWnd, (HMENU)IDC_EDIT_SEATS, hInst, NULL);
 
+    // ComboBox для выбора самолёта
+    CreateWindowW(L"STATIC", L"Самолёт:", WS_CHILD | WS_VISIBLE, 1010, 290, 100, 30, hWnd, NULL, hInst, NULL);
+    hComboAircraft = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+        1120, 290, 260, 100, hWnd, (HMENU)IDC_COMBO_AIRCRAFT, hInst, NULL);
+
+    // Кнопки
     CreateWindowW(L"BUTTON", L"+ ДОБАВИТЬ РЕЙС", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        1010, 295, 180, 40, hWnd, (HMENU)IDC_BTN_ADD_FLIGHT, hInst, NULL);
+        1010, 335, 180, 40, hWnd, (HMENU)IDC_BTN_ADD_FLIGHT, hInst, NULL);
     CreateWindowW(L"BUTTON", L"- УДАЛИТЬ РЕЙС", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        1205, 295, 180, 40, hWnd, (HMENU)IDC_BTN_DEL_FLIGHT, hInst, NULL);
+        1205, 335, 180, 40, hWnd, (HMENU)IDC_BTN_DEL_FLIGHT, hInst, NULL);
 
     // Панель управления
     CreateWindowW(L"BUTTON", L"ЗАГРУЗИТЬ ДАННЫЕ", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
@@ -244,33 +299,38 @@ void CreateControls(HWND hWnd) {
 
     // Продажа билетов
     CreateWindowW(L"STATIC", L"ПРОДАЖА БИЛЕТОВ", WS_CHILD | WS_VISIBLE | SS_CENTER,
-        1010, 345, 390, 30, hWnd, NULL, hInst, NULL);
+        1010, 400, 390, 30, hWnd, NULL, hInst, NULL);
 
-    CreateWindowW(L"STATIC", L"Номер рейса:", WS_CHILD | WS_VISIBLE, 1010, 390, 100, 30, hWnd, NULL, hInst, NULL);
-    hEditTicketFlight = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 1120, 390, 260, 30, hWnd, (HMENU)IDC_EDIT_TICKET_FLIGHT, hInst, NULL);
+    CreateWindowW(L"STATIC", L"Номер рейса:", WS_CHILD | WS_VISIBLE, 1010, 445, 100, 30, hWnd, NULL, hInst, NULL);
+    hEditTicketFlight = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 1120, 445, 260, 30, hWnd, (HMENU)IDC_EDIT_TICKET_FLIGHT, hInst, NULL);
 
-    CreateWindowW(L"STATIC", L"Пассажир (ФИО):", WS_CHILD | WS_VISIBLE, 1010, 430, 110, 30, hWnd, NULL, hInst, NULL);
-    hEditPassenger = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 1130, 430, 290, 30, hWnd, (HMENU)IDC_EDIT_PASSENGER, hInst, NULL);
+    CreateWindowW(L"STATIC", L"Пассажир (ФИО):", WS_CHILD | WS_VISIBLE, 1010, 485, 110, 30, hWnd, NULL, hInst, NULL);
+    hEditPassenger = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 1130, 485, 290, 30, hWnd, (HMENU)IDC_EDIT_PASSENGER, hInst, NULL);
 
-    CreateWindowW(L"STATIC", L"Цена (руб):", WS_CHILD | WS_VISIBLE, 1010, 470, 100, 30, hWnd, NULL, hInst, NULL);
-    hEditPrice = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 1120, 470, 200, 30, hWnd, (HMENU)IDC_EDIT_PRICE, hInst, NULL);
+    CreateWindowW(L"STATIC", L"Цена (руб):", WS_CHILD | WS_VISIBLE, 1010, 525, 100, 30, hWnd, NULL, hInst, NULL);
+    hEditPrice = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 1120, 525, 200, 30, hWnd, (HMENU)IDC_EDIT_PRICE, hInst, NULL);
 
-    CreateWindowW(L"STATIC", L"Касса №:", WS_CHILD | WS_VISIBLE, 1010, 510, 100, 30, hWnd, NULL, hInst, NULL);
-    hEditTicketCashier = CreateWindowW(L"EDIT", L"001", WS_CHILD | WS_VISIBLE | WS_BORDER, 1120, 510, 120, 30, hWnd, (HMENU)IDC_EDIT_TICKET_CASHIER, hInst, NULL);
+    CreateWindowW(L"STATIC", L"Касса №:", WS_CHILD | WS_VISIBLE, 1010, 565, 100, 30, hWnd, NULL, hInst, NULL);
+    hEditTicketCashier = CreateWindowW(L"EDIT", L"001", WS_CHILD | WS_VISIBLE | WS_BORDER, 1120, 565, 120, 30, hWnd, (HMENU)IDC_EDIT_TICKET_CASHIER, hInst, NULL);
 
     CreateWindowW(L"BUTTON", L"ПРОДАТЬ БИЛЕТ", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        1120, 560, 240, 45, hWnd, (HMENU)IDC_BTN_SELL_TICKET, hInst, NULL);
+        1120, 610, 240, 45, hWnd, (HMENU)IDC_BTN_SELL_TICKET, hInst, NULL);
 
     // Информационная строка
     CreateWindowW(L"STATIC", L"Совет: Для запросов Макс.цена и Ближайший рейс используйте номер рейса и город из полей выше",
         WS_CHILD | WS_VISIBLE, 10, 830, 1000, 30, hWnd, NULL, hInst, NULL);
+
+    // Загружаем самолёты и обновляем комбобокс
+    LoadAircrafts();
+    UpdateAircraftCombo();
 }
 
-// ========== ОБНОВЛЕНИЕ ТАБЛИЦЫ РЕЙСОВ ==========
+// ========== ОБНОВЛЕНИЕ ТАБЛИЦЫ РЕЙСОВ (с самолётами) ==========
 void RefreshFlightsList() {
     ListView_DeleteAllItems(hListFlights);
     for (size_t i = 0; i < flights.size(); i++) {
         std::wstring num = StringToWString(flights[i].getNumber());
+        std::wstring aircraft = StringToWString(flights[i].getAircraft() ? flights[i].getAircraft()->getName() : "Нет");
         std::wstring dest = StringToWString(flights[i].getDestination());
         std::wstring depart = StringToWString(flights[i].getDeparturePoint());
         std::wstring time = StringToWString(flights[i].getDepartureTimeStr());
@@ -280,11 +340,12 @@ void RefreshFlightsList() {
         LVITEMW lvi = { LVIF_TEXT, (int)i, 0 };
         lvi.pszText = (LPWSTR)num.c_str();
         ListView_InsertItem(hListFlights, &lvi);
-        ListView_SetItemText(hListFlights, (int)i, 1, (LPWSTR)dest.c_str());
-        ListView_SetItemText(hListFlights, (int)i, 2, (LPWSTR)depart.c_str());
-        ListView_SetItemText(hListFlights, (int)i, 3, (LPWSTR)time.c_str());
-        ListView_SetItemText(hListFlights, (int)i, 4, (LPWSTR)dur.c_str());
-        ListView_SetItemText(hListFlights, (int)i, 5, (LPWSTR)seats.c_str());
+        ListView_SetItemText(hListFlights, (int)i, 1, (LPWSTR)aircraft.c_str());
+        ListView_SetItemText(hListFlights, (int)i, 2, (LPWSTR)dest.c_str());
+        ListView_SetItemText(hListFlights, (int)i, 3, (LPWSTR)depart.c_str());
+        ListView_SetItemText(hListFlights, (int)i, 4, (LPWSTR)time.c_str());
+        ListView_SetItemText(hListFlights, (int)i, 5, (LPWSTR)dur.c_str());
+        ListView_SetItemText(hListFlights, (int)i, 6, (LPWSTR)seats.c_str());
     }
 }
 
@@ -308,10 +369,6 @@ void LoadData() {
         while (std::getline(file, line)) {
             if (line.empty()) continue;
 
-            if (aircrafts.empty()) {
-                aircrafts.push_back(Aircraft("Boeing 737-800", "Среднемагистральный", 180));
-            }
-
             std::vector<std::string> parts;
             std::stringstream ss(line);
             std::string part;
@@ -319,33 +376,41 @@ void LoadData() {
                 parts.push_back(part);
             }
 
-            if (parts.size() >= 6) {
+            if (parts.size() >= 7) {
                 Flight flight;
                 flight.setNumber(parts[0]);
-                flight.setAircraft(&aircrafts[0]);
-                flight.setDestination(parts[1]);
-                flight.setDeparturePoint(parts[2]);
-                flight.setDepartureTime(ParseDateTime(parts[3]));
-                flight.setDurationMinutes(SafeStoi(parts[4], 120));
-                flight.setFreeSeats(SafeStoi(parts[5], 50));
+
+                // Ищем самолёт по имени
+                std::string aircraftName = parts[1];
+                for (auto& ac : aircrafts) {
+                    if (ac.getName() == aircraftName) {
+                        flight.setAircraft(&ac);
+                        break;
+                    }
+                }
+
+                flight.setDestination(parts[2]);
+                flight.setDeparturePoint(parts[3]);
+                flight.setDepartureTime(ParseDateTime(parts[4]));
+                flight.setDurationMinutes(SafeStoi(parts[5], 120));
+                flight.setFreeSeats(SafeStoi(parts[6], 50));
                 flights.push_back(flight);
             }
         }
         file.close();
     }
     RefreshFlightsList();
-    MessageBoxW(g_hWnd, L"Данные загружены из файла flights.txt", L"Информация", MB_OK);
 }
 
 void SaveData() {
     std::ofstream file(FLIGHTS_FILE);
     for (const auto& f : flights) {
-        file << f.getNumber() << ";" << f.getDestination() << ";"
+        std::string aircraftName = f.getAircraft() ? f.getAircraft()->getName() : "";
+        file << f.getNumber() << ";" << aircraftName << ";" << f.getDestination() << ";"
             << f.getDeparturePoint() << ";" << f.getDepartureTimeStr() << ";"
             << f.getDurationMinutes() << ";" << f.getFreeSeats() << std::endl;
     }
     file.close();
-    MessageBoxW(g_hWnd, L"Данные сохранены в файл flights.txt", L"Информация", MB_OK);
 }
 
 void LoadTickets() {
@@ -401,21 +466,22 @@ void AddFlight() {
     GetWindowTextW(hEditSeats, buffer, 256);
     int seats = _wtoi(buffer);
 
+    // Получаем выбранный самолёт
+    int selIndex = (int)SendMessage(hComboAircraft, CB_GETCURSEL, 0, 0);
+    if (selIndex == CB_ERR) selIndex = 0;
+    Aircraft* selectedAircraft = &aircrafts[selIndex];
+
     if (number.empty() || dest.empty() || depart.empty()) {
         MessageBoxW(g_hWnd, L"Заполните все поля!", L"Ошибка", MB_OK);
         return;
     }
 
     if (duration <= 0) duration = 120;
-    if (seats <= 0) seats = 50;
-
-    if (aircrafts.empty()) {
-        aircrafts.push_back(Aircraft("Boeing 737-800", "Среднемагистральный", 180));
-    }
+    if (seats <= 0) seats = selectedAircraft->getSeats();
 
     Flight flight;
     flight.setNumber(number);
-    flight.setAircraft(&aircrafts[0]);
+    flight.setAircraft(selectedAircraft);
     flight.setDestination(dest);
     flight.setDeparturePoint(depart);
     flight.setDepartureTime(ParseDateTime(timeStr));
@@ -620,7 +686,7 @@ std::time_t ParseDateTime(const std::string& str) {
     std::istringstream ss(str);
     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M");
     if (ss.fail()) {
-        return (std::time_t)0;  // Исправлено: возвращаем 0 вместо time(nullptr)
+        return (std::time_t)0;  // Явное приведение типа
     }
     return std::mktime(&tm);
 }
@@ -659,17 +725,6 @@ int SafeStoi(const std::string& str, int defaultValue) {
     if (endPtr == str.c_str() || *endPtr != '\0') return defaultValue;
     return (int)result;
 }
-
-// ========== setAircraft МЕТОД ДЛЯ Flight (добавить в Flight.h) ==========
-// ВНИМАНИЕ: Убедитесь, что в файле Flight.h есть метод:
-// void setAircraft(Aircraft* ac) { aircraft = ac; }
-
-// ========== setCashierNumber, setFlightNumber, setPassengerName, setPrice ДЛЯ Ticket ==========
-// ВНИМАНИЕ: Убедитесь, что в файле Ticket.h есть методы:
-// void setCashierNumber(const std::string& num) { cashierNumber = num; }
-// void setFlightNumber(const std::string& num) { flightNumber = num; }
-// void setPassengerName(const std::string& name) { passengerName = name; }
-// void setPrice(double p) { price = p; }
 
 // ========== ОБРАБОТЧИК СООБЩЕНИЙ ==========
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
