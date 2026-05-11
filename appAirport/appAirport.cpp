@@ -132,6 +132,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     return (int)msg.wParam;
 }
 
+// Регистрация класса окна
 ATOM MyRegisterClass(HINSTANCE hInstance) {
     WNDCLASSEXW wcex = { sizeof(WNDCLASSEX) };
     wcex.style = CS_HREDRAW | CS_VREDRAW;
@@ -148,6 +149,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance) {
     return RegisterClassExW(&wcex);
 }
 
+// Создание и инициализация главного окна
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
     hInst = hInstance;
     g_hWnd = CreateWindowW(szWindowClass, L"Аэропорт - Система управления рейсами",
@@ -159,6 +161,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
     return TRUE;
 }
 
+// Обновление диапазона вертикальной прокрутки
 void UpdateScrollRange(HWND hWnd) {
     RECT rc;
     GetClientRect(hWnd, &rc);
@@ -171,6 +174,7 @@ void UpdateScrollRange(HWND hWnd) {
     SetScrollInfo(hWnd, SB_VERT, &si, TRUE);
 }
 
+// Прокрутка окна на заданное смещение
 void ScrollWindowTo(HWND hWnd, int delta) {
     int newPos = g_yScrollPos + delta;
     RECT rc;
@@ -187,7 +191,7 @@ void ScrollWindowTo(HWND hWnd, int delta) {
     }
 }
 
-// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+// Удаление пробелов в начале и конце строки
 std::string TrimString(const std::string& str) {
     size_t start = str.find_first_not_of(" \t\n\r");
     if (start == std::string::npos) return "";
@@ -195,7 +199,7 @@ std::string TrimString(const std::string& str) {
     return str.substr(start, end - start + 1);
 }
 
-// ========== ЗАГРУЗКА САМОЛЁТОВ ==========
+// Загрузка списка самолётов из файла
 void LoadAircrafts() {
     aircrafts.clear();
 
@@ -239,7 +243,7 @@ void LoadAircrafts() {
     }
 }
 
-// ========== ОБНОВЛЕНИЕ КОМБОБОКСА ==========
+// Обновление выпадающего списка самолётов
 void UpdateAircraftCombo() {
     SendMessage(hComboAircraft, CB_RESETCONTENT, 0, 0);
     for (size_t i = 0; i < aircrafts.size(); i++) {
@@ -250,7 +254,7 @@ void UpdateAircraftCombo() {
     SendMessage(hComboAircraft, CB_SETCURSEL, 0, 0);
 }
 
-// ========== ПРЕОБРАЗОВАНИЕ КОДИРОВОК ==========
+// Преобразование wchar_t* в строку UTF-8
 std::string WCharToString(const wchar_t* wstr) {
     if (!wstr) return "";
     int len = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
@@ -260,6 +264,7 @@ std::string WCharToString(const wchar_t* wstr) {
     return result;
 }
 
+// Преобразование строки UTF-8 в wstring
 std::wstring StringToWString(const std::string& str) {
     if (str.empty()) return L"";
     int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.length(), NULL, 0);
@@ -269,6 +274,7 @@ std::wstring StringToWString(const std::string& str) {
     return result;
 }
 
+// Преобразование wstring в строку UTF-8
 std::string WStringToString(const std::wstring& wstr) {
     if (wstr.empty()) return "";
     int size = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
@@ -278,12 +284,12 @@ std::string WStringToString(const std::wstring& wstr) {
     return result;
 }
 
-// ========== СОЗДАНИЕ ИНТЕРФЕЙСА ==========
+// Создание всех элементов интерфейса
 void CreateControls(HWND hWnd) {
     INITCOMMONCONTROLSEX icex = { sizeof(INITCOMMONCONTROLSEX), ICC_LISTVIEW_CLASSES };
     InitCommonControlsEx(&icex);
 
-    // Таблица рейсов (7 колонок)
+    // Таблица рейсов
     hListFlights = CreateWindowW(WC_LISTVIEW, NULL,
         WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL,
         10, 10, 1000, 320, hWnd, (HMENU)IDC_LIST_FLIGHTS, hInst, NULL);
@@ -319,13 +325,11 @@ void CreateControls(HWND hWnd) {
     CreateWindowW(L"STATIC", L"Кол-во мест:", WS_CHILD | WS_VISIBLE, 1030, 250, 100, 30, hWnd, NULL, hInst, NULL);
     hEditSeats = CreateWindowW(L"EDIT", L"50", WS_CHILD | WS_VISIBLE | WS_BORDER, 1140, 250, 120, 30, hWnd, (HMENU)IDC_EDIT_SEATS, hInst, NULL);
 
-    // ComboBox для выбора самолёта
     CreateWindowW(L"STATIC", L"Самолёт:", WS_CHILD | WS_VISIBLE, 1030, 290, 100, 30, hWnd, NULL, hInst, NULL);
     hComboAircraft = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
         1140, 290, 350, 150, hWnd, (HMENU)IDC_COMBO_AIRCRAFT, hInst, NULL);
     SendMessage(hComboAircraft, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
 
-    // Кнопки
     CreateWindowW(L"BUTTON", L"+ ДОБАВИТЬ РЕЙС", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         1030, 335, 180, 40, hWnd, (HMENU)IDC_BTN_ADD_FLIGHT, hInst, NULL);
     CreateWindowW(L"BUTTON", L"- УДАЛИТЬ РЕЙС", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
@@ -354,7 +358,7 @@ void CreateControls(HWND hWnd) {
     CreateWindowW(L"BUTTON", L"Ближайший рейс", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 10, 575, 150, 35, hWnd, (HMENU)IDC_BTN_NEAREST, hInst, NULL);
     CreateWindowW(L"BUTTON", L"СОХРАНИТЬ РЕЗУЛЬТАТ", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 10, 625, 200, 40, hWnd, (HMENU)IDC_BTN_SAVE_QUERY, hInst, NULL);
 
-    // Таблица результатов (для билетов и запросов)
+    // Таблица результатов
     CreateWindowW(L"STATIC", L"БИЛЕТЫ НА РЕЙС / РЕЗУЛЬТАТЫ ЗАПРОСОВ", WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 680, 700, 30, hWnd, NULL, hInst, NULL);
     hListResults = CreateWindowW(WC_LISTVIEW, NULL, WS_CHILD | WS_VISIBLE | LVS_REPORT, 10, 715, 1000, 150, hWnd, (HMENU)IDC_LIST_RESULTS, hInst, NULL);
     lvc.cx = 980;
@@ -373,7 +377,6 @@ void CreateControls(HWND hWnd) {
     hEditTicketCashier = CreateWindowW(L"EDIT", L"001", WS_CHILD | WS_VISIBLE | WS_BORDER, 1140, 565, 120, 30, hWnd, (HMENU)IDC_EDIT_TICKET_CASHIER, hInst, NULL);
     CreateWindowW(L"BUTTON", L"ПРОДАТЬ БИЛЕТ", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 1140, 610, 240, 45, hWnd, (HMENU)IDC_BTN_SELL_TICKET, hInst, NULL);
 
-    // Загружаем данные
     LoadAircrafts();
     UpdateAircraftCombo();
     LoadData();
@@ -382,7 +385,7 @@ void CreateControls(HWND hWnd) {
     UpdateScrollRange(hWnd);
 }
 
-// ========== ОБНОВЛЕНИЕ ТАБЛИЦЫ РЕЙСОВ ==========
+// Обновление таблицы рейсов
 void RefreshFlightsList() {
     ListView_DeleteAllItems(hListFlights);
     for (size_t i = 0; i < flights.size(); i++) {
@@ -406,7 +409,7 @@ void RefreshFlightsList() {
     }
 }
 
-// ========== ОБНОВЛЕНИЕ ТАБЛИЦЫ РЕЗУЛЬТАТОВ ==========
+// Обновление таблицы результатов (широкие строки)
 void RefreshResultsListW(const std::vector<std::wstring>& results) {
     ListView_DeleteAllItems(hListResults);
     for (size_t i = 0; i < results.size(); i++) {
@@ -416,7 +419,7 @@ void RefreshResultsListW(const std::vector<std::wstring>& results) {
     }
 }
 
-// ========== ПОКАЗ БИЛЕТОВ ДЛЯ ВЫБРАННОГО РЕЙСА ==========
+// Отображение билетов для выбранного рейса
 void ShowTicketsForSelectedFlight() {
     int sel = ListView_GetSelectionMark(hListFlights);
     if (sel < 0) {
@@ -452,7 +455,7 @@ void ShowTicketsForSelectedFlight() {
     RefreshResultsListW(results);
 }
 
-// ========== ОТЛАДОЧНАЯ ФУНКЦИЯ ==========
+// Отладка: вывод загруженных рейсов
 void DebugShowLoadedFlights() {
     std::vector<std::wstring> results;
     results.push_back(L"=== ЗАГРУЖЕННЫЕ РЕЙСЫ ===");
@@ -469,7 +472,7 @@ void DebugShowLoadedFlights() {
     RefreshResultsListW(results);
 }
 
-// ========== ЗАГРУЗКА/СОХРАНЕНИЕ ==========
+// Загрузка рейсов из файла
 void LoadData() {
     flights.clear();
     std::ifstream file(FLIGHTS_FILE);
@@ -509,19 +512,19 @@ void LoadData() {
     RefreshFlightsList();
 }
 
+// Сохранение рейсов в файл
 void SaveData() {
     std::ofstream file(FLIGHTS_FILE);
     for (const auto& f : flights) {
         std::string aircraftName = f.getAircraft() ? f.getAircraft()->getName() : "";
         file << f.getNumber() << ";" << aircraftName << ";"
-            << f.getDeparturePoint() << ";"   // Откуда
-            << f.getDestination() << ";"      // Куда
-            << f.getDepartureTimeStr() << ";"
-            << f.getDurationMinutes() << ";" << f.getFreeSeats() << std::endl;
+            << f.getDeparturePoint() << ";" << f.getDestination() << ";"
+            << f.getDepartureTimeStr() << ";" << f.getDurationMinutes() << ";" << f.getFreeSeats() << std::endl;
     }
     file.close();
 }
 
+// Загрузка билетов из файла
 void LoadTickets() {
     tickets.clear();
     std::ifstream file(TICKETS_FILE);
@@ -550,6 +553,7 @@ void LoadTickets() {
     }
 }
 
+// Сохранение билетов в файл
 void SaveTickets() {
     std::ofstream file(TICKETS_FILE);
     for (const auto& t : tickets) {
@@ -559,7 +563,7 @@ void SaveTickets() {
     file.close();
 }
 
-// ========== ДОБАВЛЕНИЕ РЕЙСА ==========
+// Добавление нового рейса
 void AddFlight() {
     wchar_t buffer[256];
     GetWindowTextW(hEditFlightNum, buffer, 256);
@@ -608,6 +612,7 @@ void AddFlight() {
     MessageBoxW(g_hWnd, L"Рейс добавлен!", L"Успех", MB_OK);
 }
 
+// Удаление выбранного рейса
 void DeleteFlight() {
     int sel = ListView_GetSelectionMark(hListFlights);
     if (sel < 0) {
@@ -629,6 +634,7 @@ void DeleteFlight() {
     MessageBoxW(g_hWnd, L"Рейс удалён!", L"Успех", MB_OK);
 }
 
+// Продажа билета на рейс
 void SellTicket() {
     wchar_t buffer[256];
     GetWindowTextW(hEditTicketFlight, buffer, 256);
@@ -680,7 +686,7 @@ void SellTicket() {
     MessageBoxW(g_hWnd, L"Билет продан!", L"Успех", MB_OK);
 }
 
-// ========== ЗАПРОСЫ ==========
+// Запрос 1: свободные места на рейс
 void QueryFreeSeats() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryFlight, buffer, 256);
@@ -698,6 +704,7 @@ void QueryFreeSeats() {
     RefreshResultsListW(results);
 }
 
+// Запрос 2: поиск рейсов по направлению
 void QueryFlightsByDestination() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryDest, buffer, 256);
@@ -715,6 +722,7 @@ void QueryFlightsByDestination() {
     RefreshResultsListW(results);
 }
 
+// Запрос 3: максимальная цена билета на рейс
 void QueryMaxTicketPrice() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryFlight, buffer, 256);
@@ -747,6 +755,7 @@ void QueryMaxTicketPrice() {
     RefreshResultsListW(results);
 }
 
+// Запрос 4: ближайший рейс по направлению
 void QueryNearestFlight() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryDest, buffer, 256);
@@ -802,6 +811,7 @@ void QueryNearestFlight() {
     RefreshResultsListW(results);
 }
 
+// Сохранение результата последнего запроса в файл
 void SaveQueryResult() {
     if (lastQueryResults.empty()) {
         MessageBoxW(g_hWnd, L"Нет результатов для сохранения!", L"Ошибка", MB_OK);
@@ -820,7 +830,7 @@ void SaveQueryResult() {
     }
 }
 
-// ========== ВСПОМОГАТЕЛЬНЫЕ ==========
+// Парсинг строки даты и времени
 std::time_t ParseDateTime(const std::string& str) {
     std::tm tm = {};
     std::istringstream ss(str);
@@ -831,6 +841,7 @@ std::time_t ParseDateTime(const std::string& str) {
     return std::mktime(&tm);
 }
 
+// Безопасное преобразование строки в double
 double SafeStod(const std::string& str, double defaultValue) {
     if (str.empty()) return defaultValue;
     char* endPtr = nullptr;
@@ -839,6 +850,7 @@ double SafeStod(const std::string& str, double defaultValue) {
     return result;
 }
 
+// Безопасное преобразование строки в int
 int SafeStoi(const std::string& str, int defaultValue) {
     if (str.empty()) return defaultValue;
     char* endPtr = nullptr;
@@ -847,7 +859,7 @@ int SafeStoi(const std::string& str, int defaultValue) {
     return (int)result;
 }
 
-// ========== ОБРАБОТЧИК СООБЩЕНИЙ ==========
+// Главная оконная процедура
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case WM_CREATE:
@@ -919,6 +931,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     return 0;
 }
 
+// Диалоговое окно "О программе"
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     UNREFERENCED_PARAMETER(lParam);
     switch (message) {
