@@ -97,6 +97,7 @@ void QueryFlightsByDestination();
 void QueryMaxTicketPrice();
 void QueryNearestFlight();
 void SaveQueryResult();
+void ShowTicketsForSelectedFlight();
 void DebugShowLoadedFlights();
 std::time_t ParseDateTime(const std::string& str);
 std::string WCharToString(const wchar_t* wstr);
@@ -353,11 +354,11 @@ void CreateControls(HWND hWnd) {
     CreateWindowW(L"BUTTON", L"Ближайший рейс", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 10, 575, 150, 35, hWnd, (HMENU)IDC_BTN_NEAREST, hInst, NULL);
     CreateWindowW(L"BUTTON", L"СОХРАНИТЬ РЕЗУЛЬТАТ", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 10, 625, 200, 40, hWnd, (HMENU)IDC_BTN_SAVE_QUERY, hInst, NULL);
 
-    // Таблица результатов
-    CreateWindowW(L"STATIC", L"РЕЗУЛЬТАТЫ ЗАПРОСОВ", WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 680, 700, 30, hWnd, NULL, hInst, NULL);
+    // Таблица результатов (для билетов и запросов)
+    CreateWindowW(L"STATIC", L"БИЛЕТЫ НА РЕЙС / РЕЗУЛЬТАТЫ ЗАПРОСОВ", WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 680, 700, 30, hWnd, NULL, hInst, NULL);
     hListResults = CreateWindowW(WC_LISTVIEW, NULL, WS_CHILD | WS_VISIBLE | LVS_REPORT, 10, 715, 1000, 150, hWnd, (HMENU)IDC_LIST_RESULTS, hInst, NULL);
     lvc.cx = 980;
-    lvc.pszText = const_cast<wchar_t*>(L"Результат");
+    lvc.pszText = const_cast<wchar_t*>(L"Информация");
     ListView_InsertColumn(hListResults, 0, &lvc);
 
     // Продажа билетов
@@ -377,7 +378,6 @@ void CreateControls(HWND hWnd) {
     UpdateAircraftCombo();
     LoadData();
     LoadTickets();
-    DebugShowLoadedFlights();
 
     UpdateScrollRange(hWnd);
 }
@@ -414,6 +414,42 @@ void RefreshResultsListW(const std::vector<std::wstring>& results) {
         lvi.pszText = const_cast<LPWSTR>(results[i].c_str());
         ListView_InsertItem(hListResults, &lvi);
     }
+}
+
+// ========== ПОКАЗ БИЛЕТОВ ДЛЯ ВЫБРАННОГО РЕЙСА ==========
+void ShowTicketsForSelectedFlight() {
+    int sel = ListView_GetSelectionMark(hListFlights);
+    if (sel < 0) {
+        std::vector<std::wstring> results;
+        results.push_back(L"Выберите рейс из таблицы выше");
+        RefreshResultsListW(results);
+        return;
+    }
+
+    wchar_t buffer[256];
+    ListView_GetItemText(hListFlights, sel, 0, buffer, 256);
+    std::string flightNum = TrimString(WCharToString(buffer));
+
+    std::vector<std::wstring> results;
+    results.push_back(L"=== БИЛЕТЫ НА РЕЙС " + StringToWString(flightNum) + L" ===");
+
+    int ticketCount = 0;
+    for (const auto& t : tickets) {
+        if (t.getFlightNumber() == flightNum) {
+            results.push_back(L"Пассажир: " + StringToWString(t.getPassengerName()) +
+                L" | Цена: " + std::to_wstring(t.getPrice()) + L" руб. | Касса: " + StringToWString(t.getCashierNumber()));
+            ticketCount++;
+        }
+    }
+
+    if (ticketCount == 0) {
+        results.push_back(L"Нет проданных билетов на этот рейс");
+    }
+    else {
+        results.push_back(L"Всего билетов: " + std::to_wstring(ticketCount));
+    }
+
+    RefreshResultsListW(results);
 }
 
 // ========== ОТЛАДОЧНАЯ ФУНКЦИЯ ==========
@@ -726,7 +762,6 @@ void QueryNearestFlight() {
         return;
     }
 
-    // Ищем самый ближайший рейс
     for (const auto& f : flights) {
         if (TrimString(f.getDestination()) == dest && f.getFreeSeats() > 0) {
             time_t diff = std::difftime(f.getDepartureTime(), now);
@@ -737,7 +772,6 @@ void QueryNearestFlight() {
         }
     }
 
-    // Если не нашли будущие рейсы, показываем любой
     if (nearest == nullptr) {
         for (const auto& f : flights) {
             if (TrimString(f.getDestination()) == dest && f.getFreeSeats() > 0) {
@@ -819,6 +853,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     case WM_CREATE:
         CreateControls(hWnd);
         break;
+    case WM_NOTIFY: {
+        NMHDR* pnmh = (NMHDR*)lParam;
+        if (pnmh->idFrom == IDC_LIST_FLIGHTS && pnmh->code == LVN_ITEMCHANGED) {
+            ShowTicketsForSelectedFlight();
+        }
+        break;
+    }
     case WM_SIZE:
         UpdateScrollRange(hWnd);
         break;
@@ -854,9 +895,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case IDM_EXIT: DestroyWindow(hWnd); break;
         case IDC_BTN_ADD_FLIGHT: AddFlight(); break;
         case IDC_BTN_DEL_FLIGHT: DeleteFlight(); break;
-        case IDC_BTN_LOAD: LoadData(); LoadTickets(); RefreshFlightsList(); DebugShowLoadedFlights(); break;
+        case IDC_BTN_LOAD: LoadData(); LoadTickets(); RefreshFlightsList(); break;
         case IDC_BTN_SAVE: SaveData(); SaveTickets(); break;
-        case IDC_BTN_CLEAR: flights.clear(); tickets.clear(); SaveData(); SaveTickets(); RefreshFlightsList(); DebugShowLoadedFlights(); break;
+        case IDC_BTN_CLEAR: flights.clear(); tickets.clear(); SaveData(); SaveTickets(); RefreshFlightsList(); break;
         case IDC_BTN_CHECK_SEATS: QueryFreeSeats(); break;
         case IDC_BTN_FIND_DEST: QueryFlightsByDestination(); break;
         case IDC_BTN_MAX_PRICE: QueryMaxTicketPrice(); break;
