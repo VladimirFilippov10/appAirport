@@ -98,16 +98,72 @@ void QueryMaxTicketPrice();
 void QueryNearestFlight();
 void SaveQueryResult();
 void ShowTicketsForSelectedFlight();
-void DebugShowLoadedFlights();
 std::time_t ParseDateTime(const std::string& str);
-std::string WCharToString(const wchar_t* wstr);
-std::wstring StringToWString(const std::string& str);
-std::string WStringToString(const std::wstring& wstr);
+std::string WCharToAnsi(const wchar_t* wstr);
+std::wstring AnsiToWString(const std::string& str);
+std::string AnsiToUtf8(const std::string& ansistr);
+std::string Utf8ToAnsi(const std::string& utf8str);
 double SafeStod(const std::string& str, double defaultValue = 0.0);
 int SafeStoi(const std::string& str, int defaultValue = 0);
 std::string TrimString(const std::string& str);
 void UpdateScrollRange(HWND hWnd);
 void ScrollWindowTo(HWND hWnd, int delta);
+void SaveFileWithBOM(const std::string& filename, const std::string& content);
+void SaveFileWithBOM(const std::string& filename, const std::vector<std::string>& lines);
+
+// ========== КОНВЕРТАЦИЯ ДЛЯ ОТОБРАЖЕНИЯ В ПРОГРАММЕ (ANSI 1251) ==========
+
+// Преобразование ANSI (Windows-1251) в wstring (для отображения)
+std::wstring AnsiToWString(const std::string& str) {
+    if (str.empty()) return L"";
+    int size = MultiByteToWideChar(1251, 0, str.c_str(), (int)str.length(), NULL, 0);
+    if (size <= 0) return L"";
+    std::wstring result(size, L'\0');
+    MultiByteToWideChar(1251, 0, str.c_str(), (int)str.length(), &result[0], size);
+    return result;
+}
+
+// Преобразование wchar_t* в ANSI (для получения из полей ввода)
+std::string WCharToAnsi(const wchar_t* wstr) {
+    if (!wstr) return "";
+    int len = WideCharToMultiByte(1251, 0, wstr, -1, NULL, 0, NULL, NULL);
+    if (len <= 1) return "";
+    std::string result(len - 1, '\0');
+    WideCharToMultiByte(1251, 0, wstr, -1, &result[0], len, NULL, NULL);
+    return result;
+}
+
+// ========== КОНВЕРТАЦИЯ ДЛЯ ФАЙЛОВ (UTF-8) ==========
+
+// Преобразование ANSI в UTF-8 (для сохранения в файл)
+std::string AnsiToUtf8(const std::string& ansistr) {
+    if (ansistr.empty()) return "";
+    int wsize = MultiByteToWideChar(1251, 0, ansistr.c_str(), -1, NULL, 0);
+    if (wsize <= 1) return "";
+    std::wstring wstr(wsize - 1, L'\0');
+    MultiByteToWideChar(1251, 0, ansistr.c_str(), -1, &wstr[0], wsize);
+
+    int usize = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
+    if (usize <= 1) return "";
+    std::string result(usize - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &result[0], usize, NULL, NULL);
+    return result;
+}
+
+// Преобразование UTF-8 в ANSI (для чтения из файла)
+std::string Utf8ToAnsi(const std::string& utf8str) {
+    if (utf8str.empty()) return "";
+    int wsize = MultiByteToWideChar(CP_UTF8, 0, utf8str.c_str(), -1, NULL, 0);
+    if (wsize <= 1) return "";
+    std::wstring wstr(wsize - 1, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8str.c_str(), -1, &wstr[0], wsize);
+
+    int asize = WideCharToMultiByte(1251, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
+    if (asize <= 1) return "";
+    std::string result(asize - 1, '\0');
+    WideCharToMultiByte(1251, 0, wstr.c_str(), -1, &result[0], asize, NULL, NULL);
+    return result;
+}
 
 // ========== ТОЧКА ВХОДА ==========
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
@@ -199,31 +255,63 @@ std::string TrimString(const std::string& str) {
     return str.substr(start, end - start + 1);
 }
 
+// Сохранение строки в файл с UTF-8 BOM
+void SaveFileWithBOM(const std::string& filename, const std::string& content) {
+    std::ofstream file(filename, std::ios::binary);
+    if (file.is_open()) {
+        unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
+        file.write(reinterpret_cast<char*>(bom), sizeof(bom));
+        file << content;
+        file.close();
+    }
+}
+
+// Сохранение нескольких строк в файл с UTF-8 BOM
+void SaveFileWithBOM(const std::string& filename, const std::vector<std::string>& lines) {
+    std::ofstream file(filename, std::ios::binary);
+    if (file.is_open()) {
+        unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
+        file.write(reinterpret_cast<char*>(bom), sizeof(bom));
+        for (const auto& line : lines) {
+            file << line << std::endl;
+        }
+        file.close();
+    }
+}
+
 // Загрузка списка самолётов из файла
 void LoadAircrafts() {
     aircrafts.clear();
 
     std::ifstream file(AIRCRAFTS_FILE);
     if (!file.is_open()) {
-        std::ofstream newFile(AIRCRAFTS_FILE);
-        if (newFile.is_open()) {
-            newFile << "Boeing 737-800;Среднемагистральный;180\n";
-            newFile << "Airbus A320;Среднемагистральный;160\n";
-            newFile << "Sukhoi Superjet 100;Ближнемагистральный;100\n";
-            newFile << "Boeing 777-300ER;Дальнемагистральный;300\n";
-            newFile << "Airbus A380;Широкофюзеляжный;500\n";
-            newFile.close();
-        }
+        std::string defaultData = "Boeing 737-800;Среднемагистральный;180\nAirbus A320;Среднемагистральный;160\nSukhoi Superjet 100;Ближнемагистральный;100\nBoeing 777-300ER;Дальнемагистральный;300\nAirbus A380;Широкофюзеляжный;500\n";
+        SaveFileWithBOM(AIRCRAFTS_FILE, defaultData);
         file.open(AIRCRAFTS_FILE);
     }
 
     if (file.is_open()) {
+        file.seekg(0);
+        char firstByte, secondByte, thirdByte;
+        firstByte = file.get();
+        secondByte = file.get();
+        thirdByte = file.get();
+        if (firstByte == (char)0xEF && secondByte == (char)0xBB && thirdByte == (char)0xBF) {
+            // BOM пропущен
+        }
+        else {
+            file.seekg(0);
+        }
+
         std::string line;
         while (std::getline(file, line)) {
             if (line.empty()) continue;
 
+            // Конвертация из UTF-8 в ANSI
+            std::string ansiLine = Utf8ToAnsi(line);
+
             std::vector<std::string> parts;
-            std::stringstream ss(line);
+            std::stringstream ss(ansiLine);
             std::string part;
             while (std::getline(ss, part, ';')) {
                 parts.push_back(part);
@@ -248,40 +336,10 @@ void UpdateAircraftCombo() {
     SendMessage(hComboAircraft, CB_RESETCONTENT, 0, 0);
     for (size_t i = 0; i < aircrafts.size(); i++) {
         std::string display = aircrafts[i].getName() + " (" + aircrafts[i].getCategory() + ", " + std::to_string(aircrafts[i].getSeats()) + " мест)";
-        std::wstring wdisplay = StringToWString(display);
+        std::wstring wdisplay = AnsiToWString(display);
         SendMessage(hComboAircraft, CB_ADDSTRING, 0, (LPARAM)wdisplay.c_str());
     }
     SendMessage(hComboAircraft, CB_SETCURSEL, 0, 0);
-}
-
-// Преобразование wchar_t* в строку UTF-8
-std::string WCharToString(const wchar_t* wstr) {
-    if (!wstr) return "";
-    int len = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
-    if (len <= 1) return "";
-    std::string result(len - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wstr, -1, &result[0], len, NULL, NULL);
-    return result;
-}
-
-// Преобразование строки UTF-8 в wstring
-std::wstring StringToWString(const std::string& str) {
-    if (str.empty()) return L"";
-    int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.length(), NULL, 0);
-    if (size <= 0) return L"";
-    std::wstring result(size, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.length(), &result[0], size);
-    return result;
-}
-
-// Преобразование wstring в строку UTF-8
-std::string WStringToString(const std::wstring& wstr) {
-    if (wstr.empty()) return "";
-    int size = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
-    if (size <= 1) return "";
-    std::string result(size - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &result[0], size, NULL, NULL);
-    return result;
 }
 
 // Создание всех элементов интерфейса
@@ -389,11 +447,11 @@ void CreateControls(HWND hWnd) {
 void RefreshFlightsList() {
     ListView_DeleteAllItems(hListFlights);
     for (size_t i = 0; i < flights.size(); i++) {
-        std::wstring num = StringToWString(flights[i].getNumber());
-        std::wstring aircraft = StringToWString(flights[i].getAircraft() ? flights[i].getAircraft()->getName() : "Нет");
-        std::wstring dest = StringToWString(flights[i].getDestination());
-        std::wstring depart = StringToWString(flights[i].getDeparturePoint());
-        std::wstring time = StringToWString(flights[i].getDepartureTimeStr());
+        std::wstring num = AnsiToWString(flights[i].getNumber());
+        std::wstring aircraft = AnsiToWString(flights[i].getAircraft() ? flights[i].getAircraft()->getName() : "Нет");
+        std::wstring dest = AnsiToWString(flights[i].getDestination());
+        std::wstring depart = AnsiToWString(flights[i].getDeparturePoint());
+        std::wstring time = AnsiToWString(flights[i].getDepartureTimeStr());
         std::wstring dur = std::to_wstring(flights[i].getDurationMinutes());
         std::wstring seats = std::to_wstring(flights[i].getFreeSeats());
 
@@ -431,16 +489,16 @@ void ShowTicketsForSelectedFlight() {
 
     wchar_t buffer[256];
     ListView_GetItemText(hListFlights, sel, 0, buffer, 256);
-    std::string flightNum = TrimString(WCharToString(buffer));
+    std::string flightNum = WCharToAnsi(buffer);
 
     std::vector<std::wstring> results;
-    results.push_back(L"=== БИЛЕТЫ НА РЕЙС " + StringToWString(flightNum) + L" ===");
+    results.push_back(L"=== БИЛЕТЫ НА РЕЙС " + AnsiToWString(flightNum) + L" ===");
 
     int ticketCount = 0;
     for (const auto& t : tickets) {
         if (t.getFlightNumber() == flightNum) {
-            results.push_back(L"Пассажир: " + StringToWString(t.getPassengerName()) +
-                L" | Цена: " + std::to_wstring(t.getPrice()) + L" руб. | Касса: " + StringToWString(t.getCashierNumber()));
+            results.push_back(L"Пассажир: " + AnsiToWString(t.getPassengerName()) +
+                L" | Цена: " + std::to_wstring(t.getPrice()) + L" руб. | Касса: " + AnsiToWString(t.getCashierNumber()));
             ticketCount++;
         }
     }
@@ -460,12 +518,27 @@ void LoadData() {
     flights.clear();
     std::ifstream file(FLIGHTS_FILE);
     if (file.is_open()) {
+        file.seekg(0);
+        char firstByte, secondByte, thirdByte;
+        firstByte = file.get();
+        secondByte = file.get();
+        thirdByte = file.get();
+        if (firstByte == (char)0xEF && secondByte == (char)0xBB && thirdByte == (char)0xBF) {
+            // BOM пропущен
+        }
+        else {
+            file.seekg(0);
+        }
+
         std::string line;
         while (std::getline(file, line)) {
             if (line.empty()) continue;
 
+            // Конвертация из UTF-8 в ANSI
+            std::string ansiLine = Utf8ToAnsi(line);
+
             std::vector<std::string> parts;
-            std::stringstream ss(line);
+            std::stringstream ss(ansiLine);
             std::string part;
             while (std::getline(ss, part, ';')) {
                 parts.push_back(part);
@@ -495,16 +568,25 @@ void LoadData() {
     RefreshFlightsList();
 }
 
-// Сохранение рейсов в файл
+// Сохранение рейсов в файл с BOM
 void SaveData() {
-    std::ofstream file(FLIGHTS_FILE);
-    for (const auto& f : flights) {
-        std::string aircraftName = f.getAircraft() ? f.getAircraft()->getName() : "";
-        file << f.getNumber() << ";" << aircraftName << ";"
-            << f.getDeparturePoint() << ";" << f.getDestination() << ";"
-            << f.getDepartureTimeStr() << ";" << f.getDurationMinutes() << ";" << f.getFreeSeats() << std::endl;
+    std::ofstream file(FLIGHTS_FILE, std::ios::binary);
+    if (file.is_open()) {
+        unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
+        file.write(reinterpret_cast<char*>(bom), sizeof(bom));
+
+        for (const auto& f : flights) {
+            std::string aircraftName = f.getAircraft() ? f.getAircraft()->getName() : "";
+            std::string line = f.getNumber() + ";" + aircraftName + ";" +
+                f.getDeparturePoint() + ";" + f.getDestination() + ";" +
+                f.getDepartureTimeStr() + ";" + std::to_string(f.getDurationMinutes()) + ";" + std::to_string(f.getFreeSeats());
+
+            // Конвертация из ANSI в UTF-8 для сохранения
+            std::string utf8line = AnsiToUtf8(line);
+            file << utf8line << std::endl;
+        }
+        file.close();
     }
-    file.close();
 }
 
 // Загрузка билетов из файла
@@ -512,12 +594,27 @@ void LoadTickets() {
     tickets.clear();
     std::ifstream file(TICKETS_FILE);
     if (file.is_open()) {
+        file.seekg(0);
+        char firstByte, secondByte, thirdByte;
+        firstByte = file.get();
+        secondByte = file.get();
+        thirdByte = file.get();
+        if (firstByte == (char)0xEF && secondByte == (char)0xBB && thirdByte == (char)0xBF) {
+            // BOM пропущен
+        }
+        else {
+            file.seekg(0);
+        }
+
         std::string line;
         while (std::getline(file, line)) {
             if (line.empty()) continue;
 
+            // Конвертация из UTF-8 в ANSI
+            std::string ansiLine = Utf8ToAnsi(line);
+
             std::vector<std::string> parts;
-            std::stringstream ss(line);
+            std::stringstream ss(ansiLine);
             std::string part;
             while (std::getline(ss, part, ';')) {
                 parts.push_back(part);
@@ -536,27 +633,36 @@ void LoadTickets() {
     }
 }
 
-// Сохранение билетов в файл
+// Сохранение билетов в файл с BOM
 void SaveTickets() {
-    std::ofstream file(TICKETS_FILE);
-    for (const auto& t : tickets) {
-        file << t.getCashierNumber() << ";" << t.getFlightNumber() << ";"
-            << t.getPassengerName() << ";" << t.getPrice() << std::endl;
+    std::ofstream file(TICKETS_FILE, std::ios::binary);
+    if (file.is_open()) {
+        unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
+        file.write(reinterpret_cast<char*>(bom), sizeof(bom));
+
+        for (const auto& t : tickets) {
+            std::string line = t.getCashierNumber() + ";" + t.getFlightNumber() + ";" +
+                t.getPassengerName() + ";" + std::to_string(t.getPrice());
+
+            // Конвертация из ANSI в UTF-8 для сохранения
+            std::string utf8line = AnsiToUtf8(line);
+            file << utf8line << std::endl;
+        }
+        file.close();
     }
-    file.close();
 }
 
 // Добавление нового рейса
 void AddFlight() {
     wchar_t buffer[256];
     GetWindowTextW(hEditFlightNum, buffer, 256);
-    std::string number = TrimString(WCharToString(buffer));
+    std::string number = TrimString(WCharToAnsi(buffer));
     GetWindowTextW(hEditDest, buffer, 256);
-    std::string dest = TrimString(WCharToString(buffer));
+    std::string dest = TrimString(WCharToAnsi(buffer));
     GetWindowTextW(hEditDepart, buffer, 256);
-    std::string depart = TrimString(WCharToString(buffer));
+    std::string depart = TrimString(WCharToAnsi(buffer));
     GetWindowTextW(hEditTime, buffer, 256);
-    std::string timeStr = TrimString(WCharToString(buffer));
+    std::string timeStr = TrimString(WCharToAnsi(buffer));
     GetWindowTextW(hEditDuration, buffer, 256);
     int duration = _wtoi(buffer);
     GetWindowTextW(hEditSeats, buffer, 256);
@@ -604,7 +710,7 @@ void DeleteFlight() {
     }
     wchar_t buffer[256];
     ListView_GetItemText(hListFlights, sel, 0, buffer, 256);
-    std::string number = TrimString(WCharToString(buffer));
+    std::string number = TrimString(WCharToAnsi(buffer));
 
     for (size_t i = 0; i < flights.size(); i++) {
         if (flights[i].getNumber() == number) {
@@ -621,13 +727,13 @@ void DeleteFlight() {
 void SellTicket() {
     wchar_t buffer[256];
     GetWindowTextW(hEditTicketFlight, buffer, 256);
-    std::string flightNum = TrimString(WCharToString(buffer));
+    std::string flightNum = TrimString(WCharToAnsi(buffer));
     GetWindowTextW(hEditPassenger, buffer, 256);
-    std::string passenger = TrimString(WCharToString(buffer));
+    std::string passenger = TrimString(WCharToAnsi(buffer));
     GetWindowTextW(hEditPrice, buffer, 256);
     double price = _wtof(buffer);
     GetWindowTextW(hEditTicketCashier, buffer, 256);
-    std::string cashier = TrimString(WCharToString(buffer));
+    std::string cashier = TrimString(WCharToAnsi(buffer));
 
     if (flightNum.empty()) {
         MessageBoxW(g_hWnd, L"Введите номер рейса!", L"Ошибка", MB_OK);
@@ -686,7 +792,7 @@ void SellTicket() {
 void QueryFreeSeats() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryFlight, buffer, 256);
-    std::string flightNum = TrimString(WCharToString(buffer));
+    std::string flightNum = TrimString(WCharToAnsi(buffer));
     std::vector<std::wstring> results;
     lastQueryResults.clear();
 
@@ -694,49 +800,33 @@ void QueryFreeSeats() {
         results.push_back(L"Введите номер рейса!");
         lastQueryResults.push_back("Введите номер рейса!");
         RefreshResultsListW(results);
-
-        std::ofstream file("query_result.txt");
-        if (file.is_open()) {
-            file << "Введите номер рейса!" << std::endl;
-            file.close();
-        }
+        SaveFileWithBOM("query_result.txt", "Введите номер рейса!");
         return;
     }
 
     for (const auto& f : flights) {
         if (TrimString(f.getNumber()) == flightNum) {
             std::string msg = "Рейс " + flightNum + " - свободных мест: " + std::to_string(f.getFreeSeats());
-            results.push_back(StringToWString(msg));
+            results.push_back(AnsiToWString(msg));
             lastQueryResults.push_back(msg);
             RefreshResultsListW(results);
-
-            std::ofstream file("query_result.txt");
-            if (file.is_open()) {
-                file << "=== СВОБОДНЫЕ МЕСТА НА РЕЙС " << flightNum << " ===" << std::endl;
-                file << msg << std::endl;
-                file.close();
-            }
+            SaveFileWithBOM("query_result.txt", msg);
             return;
         }
     }
 
     std::string msg = "Рейс " + flightNum + " не найден";
-    results.push_back(StringToWString(msg));
+    results.push_back(AnsiToWString(msg));
     lastQueryResults.push_back(msg);
     RefreshResultsListW(results);
-
-    std::ofstream file("query_result.txt");
-    if (file.is_open()) {
-        file << msg << std::endl;
-        file.close();
-    }
+    SaveFileWithBOM("query_result.txt", msg);
 }
 
 // ЗАПРОС 2: поиск рейсов по направлению
 void QueryFlightsByDestination() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryDest, buffer, 256);
-    std::string dest = TrimString(WCharToString(buffer));
+    std::string dest = TrimString(WCharToAnsi(buffer));
     std::vector<std::wstring> results;
     lastQueryResults.clear();
 
@@ -744,46 +834,33 @@ void QueryFlightsByDestination() {
         results.push_back(L"Введите город назначения!");
         lastQueryResults.push_back("Введите город назначения!");
         RefreshResultsListW(results);
-
-        std::ofstream file("query_result.txt");
-        if (file.is_open()) {
-            file << "Введите город назначения!" << std::endl;
-            file.close();
-        }
+        SaveFileWithBOM("query_result.txt", "Введите город назначения!");
         return;
     }
 
     for (const auto& f : flights) {
         if (TrimString(f.getDestination()) == dest) {
             std::string msg = "Рейс " + f.getNumber() + " - свободных мест: " + std::to_string(f.getFreeSeats());
-            results.push_back(StringToWString(msg));
+            results.push_back(AnsiToWString(msg));
             lastQueryResults.push_back(msg);
         }
     }
 
     if (results.empty()) {
         std::string msg = "Нет рейсов в " + dest;
-        results.push_back(StringToWString(msg));
+        results.push_back(AnsiToWString(msg));
         lastQueryResults.push_back(msg);
     }
 
     RefreshResultsListW(results);
-
-    std::ofstream file("query_result.txt");
-    if (file.is_open()) {
-        file << "=== РЕЙСЫ ПО НАПРАВЛЕНИЮ " << dest << " ===" << std::endl;
-        for (const auto& line : lastQueryResults) {
-            file << line << std::endl;
-        }
-        file.close();
-    }
+    SaveFileWithBOM("query_result.txt", lastQueryResults);
 }
 
 // ЗАПРОС 3: максимальная цена билета на рейс
 void QueryMaxTicketPrice() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryFlight, buffer, 256);
-    std::string flightNum = TrimString(WCharToString(buffer));
+    std::string flightNum = TrimString(WCharToAnsi(buffer));
     std::vector<std::wstring> results;
     lastQueryResults.clear();
     double maxPrice = -1;
@@ -793,12 +870,7 @@ void QueryMaxTicketPrice() {
         results.push_back(L"Введите номер рейса!");
         lastQueryResults.push_back("Введите номер рейса!");
         RefreshResultsListW(results);
-
-        std::ofstream file("query_result.txt");
-        if (file.is_open()) {
-            file << "Введите номер рейса!" << std::endl;
-            file.close();
-        }
+        SaveFileWithBOM("query_result.txt", "Введите номер рейса!");
         return;
     }
 
@@ -812,34 +884,26 @@ void QueryMaxTicketPrice() {
     if (maxPrice >= 0) {
         std::string msg1 = "Рейс " + flightNum + " - максимальная цена: " + std::to_string(maxPrice) + " руб.";
         std::string msg2 = "Пассажир: " + maxPricePassenger;
-        results.push_back(StringToWString(msg1));
-        results.push_back(StringToWString(msg2));
+        results.push_back(AnsiToWString(msg1));
+        results.push_back(AnsiToWString(msg2));
         lastQueryResults.push_back(msg1);
         lastQueryResults.push_back(msg2);
     }
     else {
         std::string msg = "Нет проданных билетов на рейс " + flightNum;
-        results.push_back(StringToWString(msg));
+        results.push_back(AnsiToWString(msg));
         lastQueryResults.push_back(msg);
     }
 
     RefreshResultsListW(results);
-
-    std::ofstream file("query_result.txt");
-    if (file.is_open()) {
-        file << "=== МАКСИМАЛЬНАЯ ЦЕНА БИЛЕТА НА РЕЙС " << flightNum << " ===" << std::endl;
-        for (const auto& line : lastQueryResults) {
-            file << line << std::endl;
-        }
-        file.close();
-    }
+    SaveFileWithBOM("query_result.txt", lastQueryResults);
 }
 
 // ЗАПРОС 4: ближайший рейс по направлению
 void QueryNearestFlight() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryDest, buffer, 256);
-    std::string dest = TrimString(WCharToString(buffer));
+    std::string dest = TrimString(WCharToAnsi(buffer));
     std::vector<std::wstring> results;
     lastQueryResults.clear();
     std::time_t now = std::time(nullptr);
@@ -850,12 +914,7 @@ void QueryNearestFlight() {
         results.push_back(L"Введите город!");
         lastQueryResults.push_back("Введите город!");
         RefreshResultsListW(results);
-
-        std::ofstream file("query_result.txt");
-        if (file.is_open()) {
-            file << "Введите город!" << std::endl;
-            file.close();
-        }
+        SaveFileWithBOM("query_result.txt", "Введите город!");
         return;
     }
 
@@ -892,29 +951,21 @@ void QueryNearestFlight() {
         msg2 = "Свободных мест: " + std::to_string(nearest->getFreeSeats());
         msg3 = "Время вылета: " + nearest->getDepartureTimeStr();
 
-        results.push_back(StringToWString(msg1));
-        results.push_back(StringToWString(msg2));
-        results.push_back(StringToWString(msg3));
+        results.push_back(AnsiToWString(msg1));
+        results.push_back(AnsiToWString(msg2));
+        results.push_back(AnsiToWString(msg3));
         lastQueryResults.push_back(msg1);
         lastQueryResults.push_back(msg2);
         lastQueryResults.push_back(msg3);
     }
     else {
         std::string msg = "Нет рейсов в " + dest;
-        results.push_back(StringToWString(msg));
+        results.push_back(AnsiToWString(msg));
         lastQueryResults.push_back(msg);
     }
 
     RefreshResultsListW(results);
-
-    std::ofstream file("query_result.txt");
-    if (file.is_open()) {
-        file << "=== БЛИЖАЙШИЙ РЕЙС В " << dest << " ===" << std::endl;
-        for (const auto& line : lastQueryResults) {
-            file << line << std::endl;
-        }
-        file.close();
-    }
+    SaveFileWithBOM("query_result.txt", lastQueryResults);
 }
 
 // Сохранение результата запроса в файл (ручное)
@@ -924,18 +975,8 @@ void SaveQueryResult() {
         return;
     }
 
-    std::ofstream file("query_result.txt");
-    if (file.is_open()) {
-        file << "=== РЕЗУЛЬТАТ ЗАПРОСА ===" << std::endl;
-        for (const auto& line : lastQueryResults) {
-            file << line << std::endl;
-        }
-        file.close();
-        MessageBoxW(g_hWnd, L"Результат сохранён в файл query_result.txt", L"Успех", MB_OK);
-    }
-    else {
-        MessageBoxW(g_hWnd, L"Ошибка сохранения файла!", L"Ошибка", MB_OK);
-    }
+    SaveFileWithBOM("query_result.txt", lastQueryResults);
+    MessageBoxW(g_hWnd, L"Результат сохранён в файл query_result.txt", L"Успех", MB_OK);
 }
 
 // Парсинг строки даты и времени
