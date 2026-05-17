@@ -21,7 +21,7 @@
 
 #define MAX_LOADSTRING 100
 
-// ID контролов
+// Идентификаторы контролов
 #define IDC_LIST_FLIGHTS       1001
 #define IDC_LIST_RESULTS       1002
 #define IDC_BTN_ADD_FLIGHT     1003
@@ -409,7 +409,7 @@ void RefreshFlightsList() {
     }
 }
 
-// Обновление таблицы результатов (широкие строки)
+// Обновление таблицы результатов
 void RefreshResultsListW(const std::vector<std::wstring>& results) {
     ListView_DeleteAllItems(hListResults);
     for (size_t i = 0; i < results.size(); i++) {
@@ -455,23 +455,6 @@ void ShowTicketsForSelectedFlight() {
     RefreshResultsListW(results);
 }
 
-// Отладка: вывод загруженных рейсов
-void DebugShowLoadedFlights() {
-    std::vector<std::wstring> results;
-    results.push_back(L"=== ЗАГРУЖЕННЫЕ РЕЙСЫ ===");
-    for (const auto& f : flights) {
-        results.push_back(L"Рейс: " + StringToWString(f.getNumber()) +
-            L" | Откуда: " + StringToWString(f.getDeparturePoint()) +
-            L" | Куда: " + StringToWString(f.getDestination()) +
-            L" | Мест: " + std::to_wstring(f.getFreeSeats()) +
-            L" | Время: " + StringToWString(f.getDepartureTimeStr()));
-    }
-    if (flights.empty()) {
-        results.push_back(L"Нет загруженных рейсов!");
-    }
-    RefreshResultsListW(results);
-}
-
 // Загрузка рейсов из файла
 void LoadData() {
     flights.clear();
@@ -490,10 +473,10 @@ void LoadData() {
 
             if (parts.size() >= 7) {
                 Flight flight;
-                flight.setNumber(parts[0]);
+                flight.setNumber(TrimString(parts[0]));
 
                 for (auto& ac : aircrafts) {
-                    if (ac.getName() == parts[1]) {
+                    if (ac.getName() == TrimString(parts[1])) {
                         flight.setAircraft(&ac);
                         break;
                     }
@@ -634,7 +617,7 @@ void DeleteFlight() {
     MessageBoxW(g_hWnd, L"Рейс удалён!", L"Успех", MB_OK);
 }
 
-// Продажа билета на рейс
+// Функция продажи билета
 void SellTicket() {
     wchar_t buffer[256];
     GetWindowTextW(hEditTicketFlight, buffer, 256);
@@ -646,22 +629,35 @@ void SellTicket() {
     GetWindowTextW(hEditTicketCashier, buffer, 256);
     std::string cashier = TrimString(WCharToString(buffer));
 
-    if (flightNum.empty() || passenger.empty() || price <= 0) {
-        MessageBoxW(g_hWnd, L"Заполните все поля!", L"Ошибка", MB_OK);
+    if (flightNum.empty()) {
+        MessageBoxW(g_hWnd, L"Введите номер рейса!", L"Ошибка", MB_OK);
         return;
+    }
+    if (passenger.empty()) {
+        MessageBoxW(g_hWnd, L"Введите ФИО пассажира!", L"Ошибка", MB_OK);
+        return;
+    }
+    if (price <= 0) {
+        MessageBoxW(g_hWnd, L"Введите корректную цену!", L"Ошибка", MB_OK);
+        return;
+    }
+    if (cashier.empty()) {
+        cashier = "001";
     }
 
     Flight* found = nullptr;
     for (auto& f : flights) {
-        if (f.getNumber() == flightNum) {
+        if (TrimString(f.getNumber()) == flightNum) {
             found = &f;
             break;
         }
     }
+
     if (!found) {
         MessageBoxW(g_hWnd, L"Рейс не найден!", L"Ошибка", MB_OK);
         return;
     }
+
     if (found->getFreeSeats() <= 0) {
         MessageBoxW(g_hWnd, L"Нет свободных мест!", L"Ошибка", MB_OK);
         return;
@@ -686,88 +682,180 @@ void SellTicket() {
     MessageBoxW(g_hWnd, L"Билет продан!", L"Успех", MB_OK);
 }
 
-// Запрос 1: свободные места на рейс
+// ЗАПРОС 1: свободные места на рейс
 void QueryFreeSeats() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryFlight, buffer, 256);
     std::string flightNum = TrimString(WCharToString(buffer));
     std::vector<std::wstring> results;
+    lastQueryResults.clear();
+
+    if (flightNum.empty()) {
+        results.push_back(L"Введите номер рейса!");
+        lastQueryResults.push_back("Введите номер рейса!");
+        RefreshResultsListW(results);
+
+        std::ofstream file("query_result.txt");
+        if (file.is_open()) {
+            file << "Введите номер рейса!" << std::endl;
+            file.close();
+        }
+        return;
+    }
 
     for (const auto& f : flights) {
-        if (f.getNumber() == flightNum) {
-            results.push_back(L"Рейс " + StringToWString(flightNum) + L" - свободных мест: " + std::to_wstring(f.getFreeSeats()));
+        if (TrimString(f.getNumber()) == flightNum) {
+            std::string msg = "Рейс " + flightNum + " - свободных мест: " + std::to_string(f.getFreeSeats());
+            results.push_back(StringToWString(msg));
+            lastQueryResults.push_back(msg);
             RefreshResultsListW(results);
+
+            std::ofstream file("query_result.txt");
+            if (file.is_open()) {
+                file << "=== СВОБОДНЫЕ МЕСТА НА РЕЙС " << flightNum << " ===" << std::endl;
+                file << msg << std::endl;
+                file.close();
+            }
             return;
         }
     }
-    results.push_back(L"Рейс " + StringToWString(flightNum) + L" не найден");
+
+    std::string msg = "Рейс " + flightNum + " не найден";
+    results.push_back(StringToWString(msg));
+    lastQueryResults.push_back(msg);
     RefreshResultsListW(results);
+
+    std::ofstream file("query_result.txt");
+    if (file.is_open()) {
+        file << msg << std::endl;
+        file.close();
+    }
 }
 
-// Запрос 2: поиск рейсов по направлению
+// ЗАПРОС 2: поиск рейсов по направлению
 void QueryFlightsByDestination() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryDest, buffer, 256);
     std::string dest = TrimString(WCharToString(buffer));
     std::vector<std::wstring> results;
+    lastQueryResults.clear();
+
+    if (dest.empty()) {
+        results.push_back(L"Введите город назначения!");
+        lastQueryResults.push_back("Введите город назначения!");
+        RefreshResultsListW(results);
+
+        std::ofstream file("query_result.txt");
+        if (file.is_open()) {
+            file << "Введите город назначения!" << std::endl;
+            file.close();
+        }
+        return;
+    }
 
     for (const auto& f : flights) {
         if (TrimString(f.getDestination()) == dest) {
-            results.push_back(L"Рейс " + StringToWString(f.getNumber()) + L" - свободных мест: " + std::to_wstring(f.getFreeSeats()));
+            std::string msg = "Рейс " + f.getNumber() + " - свободных мест: " + std::to_string(f.getFreeSeats());
+            results.push_back(StringToWString(msg));
+            lastQueryResults.push_back(msg);
         }
     }
+
     if (results.empty()) {
-        results.push_back(L"Нет рейсов в " + StringToWString(dest));
+        std::string msg = "Нет рейсов в " + dest;
+        results.push_back(StringToWString(msg));
+        lastQueryResults.push_back(msg);
     }
+
     RefreshResultsListW(results);
+
+    std::ofstream file("query_result.txt");
+    if (file.is_open()) {
+        file << "=== РЕЙСЫ ПО НАПРАВЛЕНИЮ " << dest << " ===" << std::endl;
+        for (const auto& line : lastQueryResults) {
+            file << line << std::endl;
+        }
+        file.close();
+    }
 }
 
-// Запрос 3: максимальная цена билета на рейс
+// ЗАПРОС 3: максимальная цена билета на рейс
 void QueryMaxTicketPrice() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryFlight, buffer, 256);
     std::string flightNum = TrimString(WCharToString(buffer));
     std::vector<std::wstring> results;
+    lastQueryResults.clear();
     double maxPrice = -1;
     std::string maxPricePassenger;
 
     if (flightNum.empty()) {
         results.push_back(L"Введите номер рейса!");
+        lastQueryResults.push_back("Введите номер рейса!");
         RefreshResultsListW(results);
+
+        std::ofstream file("query_result.txt");
+        if (file.is_open()) {
+            file << "Введите номер рейса!" << std::endl;
+            file.close();
+        }
         return;
     }
 
     for (const auto& t : tickets) {
-        if (t.getFlightNumber() == flightNum && t.getPrice() > maxPrice) {
+        if (TrimString(t.getFlightNumber()) == flightNum && t.getPrice() > maxPrice) {
             maxPrice = t.getPrice();
             maxPricePassenger = t.getPassengerName();
         }
     }
 
     if (maxPrice >= 0) {
-        results.push_back(L"Рейс " + StringToWString(flightNum) + L" - макс. цена: " + std::to_wstring(maxPrice) + L" руб.");
-        results.push_back(L"Пассажир: " + StringToWString(maxPricePassenger));
+        std::string msg1 = "Рейс " + flightNum + " - максимальная цена: " + std::to_string(maxPrice) + " руб.";
+        std::string msg2 = "Пассажир: " + maxPricePassenger;
+        results.push_back(StringToWString(msg1));
+        results.push_back(StringToWString(msg2));
+        lastQueryResults.push_back(msg1);
+        lastQueryResults.push_back(msg2);
     }
     else {
-        results.push_back(L"Нет проданных билетов на рейс " + StringToWString(flightNum));
+        std::string msg = "Нет проданных билетов на рейс " + flightNum;
+        results.push_back(StringToWString(msg));
+        lastQueryResults.push_back(msg);
     }
 
     RefreshResultsListW(results);
+
+    std::ofstream file("query_result.txt");
+    if (file.is_open()) {
+        file << "=== МАКСИМАЛЬНАЯ ЦЕНА БИЛЕТА НА РЕЙС " << flightNum << " ===" << std::endl;
+        for (const auto& line : lastQueryResults) {
+            file << line << std::endl;
+        }
+        file.close();
+    }
 }
 
-// Запрос 4: ближайший рейс по направлению
+// ЗАПРОС 4: ближайший рейс по направлению
 void QueryNearestFlight() {
     wchar_t buffer[256];
     GetWindowTextW(hEditQueryDest, buffer, 256);
     std::string dest = TrimString(WCharToString(buffer));
     std::vector<std::wstring> results;
+    lastQueryResults.clear();
     std::time_t now = std::time(nullptr);
     const Flight* nearest = nullptr;
     time_t minDiff = -1;
 
     if (dest.empty()) {
         results.push_back(L"Введите город!");
+        lastQueryResults.push_back("Введите город!");
         RefreshResultsListW(results);
+
+        std::ofstream file("query_result.txt");
+        if (file.is_open()) {
+            file << "Введите город!" << std::endl;
+            file.close();
+        }
         return;
     }
 
@@ -794,31 +882,51 @@ void QueryNearestFlight() {
     }
 
     if (nearest) {
+        std::string msg1, msg2, msg3;
         if (minDiff > 0) {
-            results.push_back(L"Ближайший рейс в " + StringToWString(dest) + L": " + StringToWString(nearest->getNumber()) +
-                L" через " + std::to_wstring(minDiff / 60) + L" мин");
+            msg1 = "Ближайший рейс в " + dest + ": " + nearest->getNumber() + " через " + std::to_string(minDiff / 60) + " мин";
         }
         else {
-            results.push_back(L"Ближайший рейс в " + StringToWString(dest) + L": " + StringToWString(nearest->getNumber()));
+            msg1 = "Ближайший рейс в " + dest + ": " + nearest->getNumber();
         }
-        results.push_back(L"Свободных мест: " + std::to_wstring(nearest->getFreeSeats()));
-        results.push_back(L"Время вылета: " + StringToWString(nearest->getDepartureTimeStr()));
+        msg2 = "Свободных мест: " + std::to_string(nearest->getFreeSeats());
+        msg3 = "Время вылета: " + nearest->getDepartureTimeStr();
+
+        results.push_back(StringToWString(msg1));
+        results.push_back(StringToWString(msg2));
+        results.push_back(StringToWString(msg3));
+        lastQueryResults.push_back(msg1);
+        lastQueryResults.push_back(msg2);
+        lastQueryResults.push_back(msg3);
     }
     else {
-        results.push_back(L"Нет рейсов в " + StringToWString(dest));
+        std::string msg = "Нет рейсов в " + dest;
+        results.push_back(StringToWString(msg));
+        lastQueryResults.push_back(msg);
     }
 
     RefreshResultsListW(results);
-}
 
-// Сохранение результата последнего запроса в файл
-void SaveQueryResult() {
-    if (lastQueryResults.empty()) {
-        MessageBoxW(g_hWnd, L"Нет результатов для сохранения!", L"Ошибка", MB_OK);
-        return;
-    }
     std::ofstream file("query_result.txt");
     if (file.is_open()) {
+        file << "=== БЛИЖАЙШИЙ РЕЙС В " << dest << " ===" << std::endl;
+        for (const auto& line : lastQueryResults) {
+            file << line << std::endl;
+        }
+        file.close();
+    }
+}
+
+// Сохранение результата запроса в файл (ручное)
+void SaveQueryResult() {
+    if (lastQueryResults.empty()) {
+        MessageBoxW(g_hWnd, L"Нет результатов для сохранения! Сначала выполните запрос.", L"Ошибка", MB_OK);
+        return;
+    }
+
+    std::ofstream file("query_result.txt");
+    if (file.is_open()) {
+        file << "=== РЕЗУЛЬТАТ ЗАПРОСА ===" << std::endl;
         for (const auto& line : lastQueryResults) {
             file << line << std::endl;
         }
